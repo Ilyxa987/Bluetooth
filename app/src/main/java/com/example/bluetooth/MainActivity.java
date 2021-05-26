@@ -6,193 +6,165 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothServerSocket;
 import android.bluetooth.BluetoothSocket;
-import android.content.BroadcastReceiver;
-import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.os.Bundle;
+import android.os.Handler;
+import android.util.Log;
 import android.view.View;
-import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.charset.Charset;
 import java.util.Set;
 import java.util.UUID;
 
 public class MainActivity extends AppCompatActivity {
+    public static final UUID MY_UUID = UUID.fromString("6160a667-a1b7-497f-8189-f4e327aff4c5");
 
-    TextView devices;
-    Button server, client, send_Msg, read_Msg;
-    BluetoothAdapter bluetoothAdapter;
-    int requestCode = 7868;
-    static final String NAME = "Server";
-    UUID MY_UUID;
-    MyBluetoothService myBluetoothService;
+    private static final int REQUEST_ENABLE_BT = 1;
+    BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+    private BluetoothDevice mmDevice;
+    private UUID deviceUUID;
+    ConnectedThread mConnectedThread;
 
-    public static final int REQUEST_ENABLE_BT = 1111;
+    String TAG = "MainActivity";
+    EditText send_data;
+    TextView view_data, devices_data;
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
-
-        MY_UUID = new UUID(10, 0);
-
-        devices = findViewById(R.id.devices);
-        server = findViewById(R.id.server);
-        client = findViewById(R.id.client);
-        send_Msg = findViewById(R.id.sned_Msg);
-        read_Msg = findViewById(R.id.read_Msg);
-
-        server.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                AcceptThread acceptThread = new AcceptThread();
-                acceptThread.run();
-            }
-        });
-
-        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
-        if (bluetoothAdapter == null) {
-            Toast.makeText(getApplicationContext(), "На вашем устройстве не поддерживается Bluetooth", Toast.LENGTH_LONG).show();
-            // Device doesn't support Bluetooth
-        }
-
-        if (!bluetoothAdapter.isEnabled()) {
-            Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-            startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
-        }
-
-        Intent discoverableIntent = new Intent(bluetoothAdapter.ACTION_REQUEST_ENABLE);
-        discoverableIntent.putExtra(bluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300);
-        startActivityForResult(discoverableIntent, requestCode);
-
-        IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
-        registerReceiver(receiver, filter);
-
-        filter = new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
-        registerReceiver(receiver, filter);
-
-        bluetoothAdapter.startDiscovery();
+    public void pairDevice(View v) {
 
         Set<BluetoothDevice> pairedDevices = bluetoothAdapter.getBondedDevices();
-
+        Log.e(TAG, " " + pairedDevices.size());
         if (pairedDevices.size() > 0) {
+            Object[] devices = pairedDevices.toArray();
             for (BluetoothDevice device:pairedDevices) {
                 String deviceName = device.getName();
                 String deviceHardwareAddress = device.getAddress();
-                devices.append(deviceName + " " + deviceHardwareAddress + "\n");
-                System.out.println("BLUETOOTH" + deviceName + " " + deviceHardwareAddress);
+                devices_data.append(deviceName + " " + deviceHardwareAddress + "\n");
             }
-        }
-    }
+            BluetoothDevice device = (BluetoothDevice) devices[0];
+            Log.e(TAG, " " + device);
 
-    private final BroadcastReceiver receiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            String action = intent.getAction();
-            if (BluetoothDevice.ACTION_FOUND.equals(action)) {
-                BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-                String deviceName = device.getName();
-                String deviceHardwareAddress = device.getAddress();
-            }
-        }
-    };
+            bluetoothAdapter.cancelDiscovery();
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        Set<BluetoothDevice> pairedDevices = bluetoothAdapter.getBondedDevices();
-
-        if (pairedDevices.size() > 0) {
-            for (BluetoothDevice device:pairedDevices) {
-                String deviceName = device.getName();
-                String deviceHardwareAddress = device.getAddress();
-                devices.append(deviceName + " " + deviceHardwareAddress + "\n");
-                System.out.println("BLUETOOTH" + deviceName + " " + deviceHardwareAddress);
-            }
-        }
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        unregisterReceiver(receiver);
-    }
-
-    public class AcceptThread extends Thread {
-        private final BluetoothServerSocket mServerSocket;
-
-        public AcceptThread() {
-            BluetoothServerSocket tmp = null;
-            try {
-                tmp = bluetoothAdapter.listenUsingRfcommWithServiceRecord(NAME, MY_UUID);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            mServerSocket = tmp;
-        }
-
-        @Override
-        public void run() {
-            BluetoothSocket socket = null;
-            while (true) {
-                try {
-                    socket = mServerSocket.accept();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                    break;
-                }
-                if (socket != null) {
-                    try {
-                        mServerSocket.close();
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                    break;
-                }
-            }
-        }
-
-        public void cancel() {
-            try {
-                mServerSocket.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+            ConnectThread connect = new ConnectThread(device, MY_UUID);
+            connect.start();
         }
     }
 
     private class ConnectThread extends Thread {
-        private final BluetoothSocket mmSocket;
-        private final BluetoothDevice mmDevice;
+        private BluetoothSocket mmSocket;
 
-        public ConnectThread(BluetoothDevice bluetoothDevice){
-            BluetoothSocket tmp = null;
-            mmDevice = bluetoothDevice;
-
-            try {
-                tmp = bluetoothDevice.createRfcommSocketToServiceRecord(MY_UUID);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            mmSocket = tmp;
+        public ConnectThread(BluetoothDevice device, UUID uuid) {
+            Log.d(TAG, "ConnectThread: started");
+            mmDevice = device;
+            deviceUUID = uuid;
         }
 
         @Override
         public void run() {
-            bluetoothAdapter.cancelDiscovery();
+            BluetoothSocket tmp = null;
+            Log.i(TAG, "RUN mConnectThread ");
+
+            try {
+                Log.d(TAG, "ConnectThread: Trying to create Socket using UUID");
+                tmp = mmDevice.createRfcommSocketToServiceRecord(MY_UUID);
+            } catch (IOException e) {
+                Log.e(TAG, "ConnectThread : Could not create Socket using UUID");
+            }
+
+            mmSocket = tmp;
 
             try {
                 mmSocket.connect();
             } catch (IOException e) {
                 try {
                     mmSocket.close();
+                    Log.d(TAG, "run: Closed Socket.");
                 } catch (IOException ioException) {
-                    ioException.printStackTrace();
+                    Log.e(TAG, "mConnectThread: run: Unable to close connection in socket ");
                 }
-                return;
+                Log.d(TAG, "run: ConnectThread: Could not connect to UUID: " + MY_UUID);
+            }
+
+            connected(mmSocket);
+        }
+
+        public void cancel() {
+            try {
+                Log.d(TAG, "cancel: Closing client socket ");
+                mmSocket.close();
+            } catch (IOException e) {
+                Log.e(TAG, "cancel: close() of mmSocket in ConnectThread failed " + e.getMessage());
+            }
+        }
+    }
+
+    private void connected(BluetoothSocket mmSocket){
+        Log.d(TAG, "connected: Starting ");
+
+        mConnectedThread = new ConnectedThread(mmSocket);
+        mConnectedThread.start();
+    }
+
+    private class ConnectedThread extends Thread {
+        private final BluetoothSocket mmSocket;
+        private final InputStream mmInStream;
+        private final OutputStream mmOutStream;
+
+        public ConnectedThread(BluetoothSocket socket) {
+            Log.d(TAG, "ConnectedThread: starting ");
+
+            mmSocket = socket;
+            InputStream tmpIn = null;
+            OutputStream tmpOut = null;
+
+            try {
+                tmpIn = mmSocket.getInputStream();
+                tmpOut = mmSocket.getOutputStream();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
+            mmInStream = tmpIn;
+            mmOutStream = tmpOut;
+        }
+
+        @Override
+        public void run() {
+            byte[] buffer = new byte[1024];
+
+            int bytes;
+
+            while (true) {
+                try {
+                    bytes = mmInStream.read(buffer);
+                    final String incomingMessage = new String(buffer, 0, bytes);
+                    Log.d(TAG, "InputStream: " + incomingMessage);
+
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            view_data.setText(incomingMessage);
+                        }
+                    });
+                } catch (IOException e) {
+                   Log.e(TAG, "write: Error reading InputStream. " + e.getMessage());
+                   break;
+                }
+            }
+        }
+
+        public void write(byte[] bytes) {
+            String text = new String(bytes, Charset.defaultCharset());
+            Log.d(TAG, "write: writing to OutputStream " + text);
+            try {
+                mmOutStream.write(bytes);
+            } catch (IOException e) {
+                Log.e(TAG, "write: Error writing");
             }
         }
 
@@ -204,5 +176,77 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     }
-}
 
+    public void SendMessage(View v) {
+        byte[] bytes = send_data.getText().toString().getBytes(Charset.defaultCharset());
+        mConnectedThread.write(bytes);
+    }
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        send_data = findViewById(R.id.send);
+        view_data = findViewById(R.id.view);
+        devices_data = findViewById(R.id.devices);
+
+        if (bluetoothAdapter != null && !bluetoothAdapter.isEnabled()) {
+            Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+            startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
+        }
+    }
+
+    public void Start_Server(View view) {
+        AcceptThread accept = new AcceptThread();
+        accept.start();
+    }
+
+    private class AcceptThread extends Thread {
+        private final BluetoothServerSocket mmServerSocket;
+
+        public AcceptThread() {
+            BluetoothServerSocket tmp = null;
+
+            try {
+                tmp = bluetoothAdapter.listenUsingInsecureRfcommWithServiceRecord("Bluetooth", MY_UUID);
+                Log.d(TAG, "AcceptThread: Setting up Server using: " + MY_UUID);
+            } catch (IOException e) {
+                Log.e(TAG, "AcceptThread: IOException: " + e.getMessage());
+            }
+
+            mmServerSocket = tmp;
+        }
+
+        @Override
+        public void run() {
+            Log.d(TAG, "run: AcceptThread Running");
+
+            BluetoothSocket socket = null;
+
+            bluetoothAdapter.cancelDiscovery();
+
+            try {
+                Log.d(TAG, "run: RFCOM server socket start...");
+                socket = mmServerSocket.accept();
+                Log.d(TAG, "AcceptThread: RFCOM server socket accepted connection" );
+            } catch (IOException e) {
+                Log.e(TAG, " AcceptThread: IOException: " + e.getMessage());
+            }
+
+            if (socket != null) {
+                connected(socket);
+            }
+
+            Log.i(TAG, "END mAcceptThread");
+        }
+
+        public void cancel() {
+            try {
+                mmServerSocket.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+}

@@ -8,32 +8,40 @@
     tools:context=".MainActivity"
     android:orientation="vertical">
 
+    <EditText
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:id="@+id/send"/>
+
     <TextView
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:id="@+id/devices" />
+        android:id="@+id/view"/>
+
+    <Button
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Пара"
+        android:id="@+id/pairButton"
+        android:onClick="pairDevice"/>
 
     <Button
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Сервер"
-        android:id="@+id/server"/>
+        android:id="@+id/serverButton"
+        android:onClick="Start_Server"/>
 
     <Button
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Клиент"
-        android:id="@+id/client"/>
+        android:text="Отправка"
+        android:id="@+id/sendButton"
+        android:onClick="SendMessage"/>
 
-    <Button
+    <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Отправить сообщение"
-        android:id="@+id/sned_Msg"/>
+        android:id="@+id/devices"/>
 
-    <Button
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Принять сообщение"
-        android:id="@+id/read_Msg"/>
 </LinearLayout>
